@@ -1,0 +1,185 @@
+<?php
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function addressfield_query_postalcodes_table_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'addressfield') {
+    return 'plugins/' . $plugin;
+  }
+}
+
+
+/**
+ * Implements hook_field_attach_presave().
+ *
+ * Store additional address fields serialized in addressfield data column.
+ */
+function addressfield_query_postalcodes_table_field_attach_presave($entity_type, $entity) {
+  $addressfields = addressfield_query_postalcodes_table_addressfield_types();
+  foreach ($addressfields as $field_name) {
+    if (isset($entity->$field_name)){
+      $default_fields = array_keys( addressfield_default_values() );
+      $default_fields[] = 'element_key';
+      foreach ($entity->$field_name as $lang_code => $fields) {
+        foreach ($fields as $delta => $fieldset) {
+          $data = array();
+          foreach ($fieldset as $field_key => $field_value) {
+            // Compare fields with addressfield default fields and store any
+            // additional fields in data.
+            if (!in_array($field_key, $default_fields)){
+              // Store additional field value
+              $data[$field_key] = $field_value;
+            }
+          }
+          if (!empty($data)){
+            $entity->{$field_name}[$lang_code][$delta]['data'] = serialize($data);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_field_attach_load().
+ *
+ * Load and set additional addressfield field values from serialized data
+ * column.
+ */
+function addressfield_query_postalcodes_table_field_attach_load($entity_type, $entities, $age, $options){
+  $addressfields = addressfield_query_postalcodes_table_addressfield_types();
+  $elements = drupal_map_assoc(array(
+    'query_postalcode_table',
+  ));
+
+  foreach ($entities as $entity) {
+    foreach ($addressfields as $field_name) {
+      if (empty($entity->{$field_name})) {
+        continue;
+      }
+
+      foreach ($entity->$field_name as $lang_code => $fields) {
+        foreach ($fields as $delta => $fieldset) {
+          if (!empty($fieldset['data'])){
+            // Unserialize data, else skip if string
+            if (($data = unserialize($fieldset['data'])) && is_array($data)) {
+              // Store unserialized data values in additional fields
+              $defaultselected_data = array_intersect_key($data, $elements);
+              $entity->{$field_name}[$lang_code][$delta] = array_merge($fieldset, $defaultselected_data);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Returns an array of the field names of any addressfields.
+ */
+function addressfield_query_postalcodes_table_addressfield_types() {
+  if (!isset($addressfields)) {
+    static $addressfields;
+    $result = db_query("SELECT field_name FROM {field_config} WHERE type = 'addressfield'");
+    $addressfields = array();
+    foreach($result as $row) {
+      $addressfields[] = $row->field_name;
+    }
+  }
+  return $addressfields;
+}
+
+function _addressfield_query_postalcodes_table_render_address($format) {
+  $address = $format['#address'];
+  return $format;
+}
+
+
+
+
+/**
+ * Implements hook_menu().
+ */
+function addressfield_query_postalcodes_table_menu() {
+  $items['query_postal'] = array(
+    'page callback' => 'addressfield_query_postalcodes_table_query',
+    'access callback' => true,
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+function addressfield_query_postalcodes_table_query(){
+
+  //$country, $administrative_area = null, $zip = null, $city = null
+		$result = new stdClass;
+    $result->result = array();
+
+    watchdog('addressfield_query_postalcodes_table_query','data: '.$_REQUEST['data']);
+
+    $data = drupal_json_decode($_REQUEST['data']);
+    $elements = (object) $data['elements'];
+
+    $result->query = $elements;
+    
+    if( trim($elements->country) != '' && (count( array_filter( (array) $elements ) ) > 1) ) {
+      $query = db_select('postal_codes','pc');
+      $query->fields('pc');
+
+      // country_code
+      // postal_code
+      // place_name
+      // admin_name1
+      // admin_code1
+      // admin_name2
+      // admin_code2
+      // admin_name3
+      // admin_code3
+      // latitude
+      // longitude
+      // accuracy 
+
+      $query->condition('country_code',$elements->country);
+      if(trim($elements->locality)!='') $query->condition('place_name','%'.$elements->locality.'%','LIKE');
+      if(trim($elements->postal_code)!='') $query->condition('postal_code',$elements->postal_code,'LIKE');
+      if(trim($elements->state)!='') {
+        $or = db_or();
+        $or->condition('admin_code1',$elements->state);
+        $or->condition('admin_code2',$elements->state);
+        $query->condition($or);
+      }
+
+      $query->orderBy('postal_code');
+      //$query->range(0,10);
+
+      //watchdog( 'addressfield_query_postalcodes_table_query','query: ' . _addressfield_query_postalcodes_table_get_query_string($query) );
+
+      $res = $query->execute()->fetchAll(PDO::FETCH_OBJ);
+      foreach($res as $row){
+        $result->result[] = $row;
+      }
+    
+    }
+
+  	drupal_json_output($result);
+    drupal_exit();
+}
+
+// function _addressfield_query_postalcodes_table_get_query_string(SelectQueryInterface $query) {
+//   $string = (string) $query;
+//   $arguments = $query->arguments();
+
+//   if (!empty($arguments) && is_array($arguments)) {
+//     foreach ($arguments as $placeholder => &$value) {
+//       if (is_string($value)) {
+//         $value = "'$value'";
+//       }
+//     }
+
+//     $string = strtr($string, $arguments);
+//   }
+
+//   return $string;
+// }

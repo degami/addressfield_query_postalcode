@@ -1,0 +1,8 @@
+name = Address Field Query PostalCodes Table
+description = Query PostalCodes Table on fields change.
+core = 7.x
+package = Fields
+
+dependencies[] = ctools
+dependencies[] = addressfield
+
