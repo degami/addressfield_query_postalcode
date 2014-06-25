@@ -120,10 +120,11 @@ function addressfield_query_postalcodes_table_query(){
     watchdog('addressfield_query_postalcodes_table_query','data: '.$_REQUEST['data']);
 
     $data = drupal_json_decode($_REQUEST['data']);
+    drupal_alter('query_postalcode_data', $data);
     $elements = (object) $data['elements'];
 
     $result->query = $elements;
-    
+
     if( trim($elements->country) != '' && (count( array_filter( (array) $elements ) ) > 1) ) {
       $query = db_select('postal_codes','pc');
       $query->fields('pc');
@@ -139,7 +140,7 @@ function addressfield_query_postalcodes_table_query(){
       // admin_code3
       // latitude
       // longitude
-      // accuracy 
+      // accuracy
 
       $query->condition('country_code',$elements->country);
       if(trim($elements->locality)!='') $query->condition('place_name','%'.$elements->locality.'%','LIKE');
@@ -160,7 +161,7 @@ function addressfield_query_postalcodes_table_query(){
       foreach($res as $row){
         $result->result[] = $row;
       }
-    
+
     }
 
   	drupal_json_output($result);
